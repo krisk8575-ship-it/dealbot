@@ -1,0 +1,11 @@
+{
+  "name": "deal-bot",
+  "version": "1.0.0",
+  "main": "discord-deal-bot.js",
+  "scripts": {
+    "start": "node discord-deal-bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
+}
