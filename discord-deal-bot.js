@@ -1,11 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-
-const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://dwascktlqsyzgyijadki.supabase.co/functions/v1/discord-deals';
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-
-const ALLOWED_ROLES = ['INFINITE AGENT', 'RYSE AGENT'];
+const { Client, GatewayIntentBits } = require("discord.js");
 
 const client = new Client({
   intents: [
@@ -16,40 +9,64 @@ const client = new Client({
   ],
 });
 
-client.once('ready', () => {
+const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+
+client.on("ready", () => {
   console.log(`✅ Deal bot is online as ${client.user.tag}`);
+  console.log(`📡 Watching channel: ${CHANNEL_ID}`);
+  console.log(`🔗 Webhook URL: ${WEBHOOK_URL ? "SET" : "MISSING"}`);
+  console.log(`🔑 Webhook Secret: ${WEBHOOK_SECRET ? "SET" : "MISSING"}`);
 });
 
-client.on('messageCreate', async (message) => {
-  // Ignore bots and other channels
-  if (message.author.bot) return;
-  if (message.channel.id !== CHANNEL_ID) return;
+client.on("messageCreate", async (message) => {
+  console.log(`📨 Message received in channel ${message.channel.id} from ${message.author.tag}: "${message.content.substring(0, 50)}"`);
 
-  // Only process messages that look like deals (contain a dollar amount)
-  if (!/\$[\d,]+/.test(message.content)) return;
+  if (message.author.bot) {
+    console.log("⏭️ Skipping bot message");
+    return;
+  }
+
+  if (CHANNEL_ID && message.channel.id !== CHANNEL_ID) {
+    console.log(`⏭️ Wrong channel (expected ${CHANNEL_ID}, got ${message.channel.id})`);
+    return;
+  }
+
+  const dealMatch = message.content.match(/\$[\d,]+/);
+  if (!dealMatch) {
+    console.log("⏭️ No deal pattern found");
+    return;
+  }
+
+  const member = message.member;
+  if (!member) {
+    console.log("⏭️ No member data");
+    return;
+  }
+
+  const roles = member.roles.cache.map((r) => r.name.toUpperCase());
+  console.log(`👤 Roles: ${roles.join(", ")}`);
+
+  const hasRole = roles.some(
+    (r) => r.includes("INFINITE AGENT") || r.includes("RYSE AGENT")
+  );
+
+  if (!hasRole) {
+    console.log("⏭️ User doesn't have required role");
+    return;
+  }
+
+  const rawName = member.nickname || message.author.globalName || message.author.username;
+  const author = rawName.replace(/\s*\|\s*(ryse|infinite)\s*/i, "").trim();
+  console.log(`✅ Processing deal from: ${author}`);
 
   try {
-    // Check if user has an allowed role
-    const member = message.member || await message.guild.members.fetch(message.author.id);
-    const hasAllowedRole = member.roles.cache.some(role =>
-      ALLOWED_ROLES.some(allowed => role.name.toUpperCase() === allowed.toUpperCase())
-    );
-
-    if (!hasAllowedRole) {
-      // Silently skip — not on your team
-      return;
-    }
-
-    // Get nickname, strip "| Ryse" or "| Infinite" suffix
-    const rawName = member.nickname || message.author.globalName || message.author.username;
-    const author = rawName.replace(/\s*\|\s*(ryse|infinite)\s*/i, '').trim();
-
-    // Forward to webhook
     const response = await fetch(WEBHOOK_URL, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'x-webhook-secret': WEBHOOK_SECRET,
+        "Content-Type": "application/json",
+        "x-webhook-secret": WEBHOOK_SECRET || "",
       },
       body: JSON.stringify({
         author: author,
@@ -58,18 +75,17 @@ client.on('messageCreate', async (message) => {
     });
 
     const result = await response.json();
+    console.log(`📤 Webhook response (${response.status}):`, JSON.stringify(result));
 
     if (response.ok) {
-      await message.react('✅');
-      console.log(`✅ Deal logged for ${author}: ${message.content}`);
+      await message.react("✅");
     } else {
-      await message.react('❌');
-      console.error(`❌ Failed for ${author}:`, result);
+      await message.react("❌");
     }
   } catch (err) {
-    console.error('Error processing deal:', err);
-    await message.react('❌');
+    console.error("❌ Webhook error:", err.message);
+    await message.react("❌");
   }
 });
 
-client.login(BOT_TOKEN);
+client.login(process.env.DISCORD_BOT_TOKEN);
